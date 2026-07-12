@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import shutil
 import sys
 import tempfile
 import unittest
@@ -14,8 +16,11 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 from check_plugin_dependencies import (
     scan_references,
     validate_closure,
+    validate_generated_skills,
     validate_lock,
+    validate_manifest_and_marketplace,
     validate_staged_skills,
+    validate_version_change,
 )
 from build_plugin import build_skills, install_skills
 
@@ -171,8 +176,6 @@ class PluginBuilderTests(unittest.TestCase):
             "namespaceRewrites": {"superpowers:": "vibecoding-guidance:"},
         }
         self.lock_path = plugin_root / "dependency-lock.json"
-        import json
-
         self.lock_path.write_text(json.dumps(self.lock), encoding="utf-8")
 
     def tearDown(self) -> None:
@@ -275,6 +278,126 @@ class PluginBuilderTests(unittest.TestCase):
                 install_skills(staged, canonical)
 
         self.assertEqual((canonical / "old.txt").read_text(encoding="utf-8"), "old")
+
+
+class PluginValidationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp_dir.name)
+        plugin_root = self.root / "plugins" / "vibecoding-guidance"
+        (plugin_root / ".codex-plugin").mkdir(parents=True)
+        (plugin_root / "skills" / "entry").mkdir(parents=True)
+        (plugin_root / "skills" / "entry" / "SKILL.md").write_text(
+            "---\nname: entry\ndescription: Fixture.\n---\n",
+            encoding="utf-8",
+        )
+        self.manifest_path = plugin_root / ".codex-plugin" / "plugin.json"
+        self.manifest = {
+            "name": "vibecoding-guidance",
+            "version": "0.1.0",
+            "skills": "./skills/",
+        }
+        self.write_json(self.manifest_path, self.manifest)
+        self.lock = {
+            "schemaVersion": 1,
+            "namespace": "vibecoding-guidance",
+            "sources": {"repository": {"type": "local"}},
+            "skills": [
+                {"name": "entry", "source": "repository", "path": "skills/entry"}
+            ],
+            "namespaceRewrites": {"superpowers:": "vibecoding-guidance:"},
+        }
+        self.lock_path = plugin_root / "dependency-lock.json"
+        self.write_json(self.lock_path, self.lock)
+        marketplace_path = self.root / ".agents" / "plugins" / "marketplace.json"
+        marketplace_path.parent.mkdir(parents=True)
+        self.marketplace_path = marketplace_path
+        self.marketplace = {
+            "name": "fixture",
+            "plugins": [
+                {
+                    "name": "vibecoding-guidance",
+                    "source": {
+                        "source": "local",
+                        "path": "./plugins/vibecoding-guidance",
+                    },
+                }
+            ],
+        }
+        self.write_json(marketplace_path, self.marketplace)
+        self.git("init")
+        self.git("config", "user.email", "fixture@example.com")
+        self.git("config", "user.name", "Fixture")
+        self.git("add", ".")
+        self.git("commit", "-m", "baseline")
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def write_json(self, path: Path, value: object) -> None:
+        path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+
+    def git(self, *arguments: str) -> str:
+        import subprocess
+
+        return subprocess.run(
+            ["git", *arguments],
+            cwd=str(self.root),
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+
+    def test_rejects_manifest_and_marketplace_mismatches(self) -> None:
+        self.manifest["skills"] = "./other/"
+        self.marketplace["plugins"][0]["name"] = "wrong-name"
+        self.write_json(self.manifest_path, self.manifest)
+        self.write_json(self.marketplace_path, self.marketplace)
+
+        errors = validate_manifest_and_marketplace(self.root)
+
+        combined = "\n".join(errors)
+        self.assertIn("./skills/", combined)
+        self.assertIn("wrong-name", combined)
+
+    def test_rejects_generated_drift_from_candidate(self) -> None:
+        candidate = self.root / "candidate"
+        shutil.copytree(
+            self.root / "plugins" / "vibecoding-guidance" / "skills",
+            candidate,
+        )
+        (candidate / "entry" / "SKILL.md").write_text("changed", encoding="utf-8")
+
+        errors = validate_generated_skills(self.root, self.lock, candidate)
+
+        self.assertIn("clean rebuild", "\n".join(errors))
+
+    def test_rejects_dependency_change_without_version_bump(self) -> None:
+        self.lock["namespaceRewrites"]["example:"] = "vibecoding-guidance:"
+        self.write_json(self.lock_path, self.lock)
+
+        errors = validate_version_change(self.root, "HEAD")
+
+        self.assertIn("version", "\n".join(errors).lower())
+
+    def test_rejects_invalid_semver(self) -> None:
+        self.manifest["version"] = "release"
+        self.write_json(self.manifest_path, self.manifest)
+
+        errors = validate_version_change(self.root, "HEAD")
+
+        self.assertIn("SemVer", "\n".join(errors))
+
+    def test_initial_release_requires_version_0_1_0(self) -> None:
+        self.git("rm", "plugins/vibecoding-guidance/.codex-plugin/plugin.json")
+        self.git("commit", "-m", "remove baseline manifest")
+        self.manifest["version"] = "0.2.0"
+        self.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        self.write_json(self.manifest_path, self.manifest)
+
+        errors = validate_version_change(self.root, "HEAD")
+
+        self.assertIn("0.1.0", "\n".join(errors))
 
 
 if __name__ == "__main__":

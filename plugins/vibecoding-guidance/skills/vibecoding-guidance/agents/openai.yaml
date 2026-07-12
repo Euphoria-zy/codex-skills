@@ -1,0 +1,4 @@
+interface:
+  display_name: "VibeCoding Guidance"
+  short_description: "Guide approved, tracked, and verified software delivery"
+  default_prompt: "Use $vibecoding-guidance to turn my product idea into approved, tracked, and verified software delivery."

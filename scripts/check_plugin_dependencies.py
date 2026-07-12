@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Set
@@ -12,6 +13,11 @@ from typing import Dict, List, Mapping, Optional, Set
 
 REFERENCE_PATTERN = re.compile(r"superpowers:([a-z0-9-]+)")
 GIT_COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
+SEMVER_PATTERN = re.compile(
+    r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
+    r"(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?"
+    r"(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
+)
 
 
 def load_lock(path: Path) -> Dict[str, object]:
@@ -202,12 +208,191 @@ def validate_staged_skills(
             errors.append("third-party notice is missing")
         else:
             notice = notice_path.read_text(encoding="utf-8")
+            if "```text\n" not in notice or "\n```" not in notice:
+                errors.append("third-party notice is missing the full license text")
             for source_name, source in git_sources:
                 for field in ("url", "commit", "license"):
                     value = source.get(field)
                     if isinstance(value, str) and value not in notice:
                         errors.append(f"third-party notice is missing {field} for source `{source_name}`")
 
+    return sorted(set(errors))
+
+
+def _file_tree(root: Path) -> Dict[str, bytes]:
+    if not root.is_dir():
+        return {}
+    return {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file()
+    }
+
+
+def validate_generated_skills(
+    repo_root: Path,
+    lock: Mapping[str, object],
+    candidate: Optional[Path] = None,
+) -> List[str]:
+    """Validate the canonical generated tree and optional clean rebuild."""
+
+    canonical = repo_root / "plugins" / "vibecoding-guidance" / "skills"
+    errors = validate_staged_skills(canonical, lock)
+    if candidate is not None:
+        errors.extend(validate_staged_skills(candidate, lock))
+        if _file_tree(canonical) != _file_tree(candidate):
+            errors.append("generated plugin skills differ from a clean rebuild")
+    return sorted(set(errors))
+
+
+def _load_json_object(path: Path, label: str, errors: List[str]) -> Mapping[str, object]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        errors.append(f"failed to load {label}: {exc}")
+        return {}
+    if not isinstance(value, dict):
+        errors.append(f"{label} must contain a JSON object")
+        return {}
+    return value
+
+
+def validate_manifest_and_marketplace(repo_root: Path) -> List[str]:
+    """Ensure plugin and repository marketplace metadata agree."""
+
+    errors: List[str] = []
+    manifest = _load_json_object(
+        repo_root
+        / "plugins"
+        / "vibecoding-guidance"
+        / ".codex-plugin"
+        / "plugin.json",
+        "plugin manifest",
+        errors,
+    )
+    marketplace = _load_json_object(
+        repo_root / ".agents" / "plugins" / "marketplace.json",
+        "marketplace",
+        errors,
+    )
+    plugin_name = manifest.get("name")
+    if manifest.get("skills") != "./skills/":
+        errors.append("plugin manifest skills must be `./skills/`")
+
+    plugins = marketplace.get("plugins")
+    if not isinstance(plugins, list) or len(plugins) != 1 or not isinstance(plugins[0], dict):
+        errors.append("marketplace must contain exactly one plugin entry")
+        return sorted(set(errors))
+    entry = plugins[0]
+    marketplace_name = entry.get("name")
+    if marketplace_name != plugin_name:
+        errors.append(
+            f"marketplace plugin name `{marketplace_name}` does not match manifest name `{plugin_name}`"
+        )
+    source = entry.get("source")
+    expected_path = f"./plugins/{plugin_name}"
+    if not isinstance(source, dict) or source.get("source") != "local":
+        errors.append("marketplace plugin source must be local")
+    elif source.get("path") != expected_path:
+        errors.append(f"marketplace plugin path must be `{expected_path}`")
+    return sorted(set(errors))
+
+
+def _baseline_file(repo_root: Path, ref: str, relative: str) -> Optional[bytes]:
+    result = subprocess.run(
+        ["git", "show", f"{ref}:{relative}"],
+        cwd=str(repo_root),
+        check=False,
+        capture_output=True,
+    )
+    return result.stdout if result.returncode == 0 else None
+
+def _parse_semver(value: object) -> Optional[tuple]:
+    if not isinstance(value, str):
+        return None
+    match = SEMVER_PATTERN.fullmatch(value)
+    if match is None:
+        return None
+    prerelease = match.group(4)
+    return (
+        int(match.group(1)),
+        int(match.group(2)),
+        int(match.group(3)),
+        prerelease,
+    )
+
+
+def _semver_greater(candidate: tuple, baseline: tuple) -> bool:
+    if candidate[:3] != baseline[:3]:
+        return candidate[:3] > baseline[:3]
+    candidate_pre = candidate[3]
+    baseline_pre = baseline[3]
+    if candidate_pre is None:
+        return baseline_pre is not None
+    if baseline_pre is None:
+        return False
+    return candidate_pre > baseline_pre
+
+
+def validate_version_change(repo_root: Path, base_ref: Optional[str]) -> List[str]:
+    """Require valid and increasing versions for generated or locked changes."""
+
+    errors: List[str] = []
+    relative_manifest = "plugins/vibecoding-guidance/.codex-plugin/plugin.json"
+    manifest_path = repo_root / relative_manifest
+    manifest = _load_json_object(manifest_path, "plugin manifest", errors)
+    candidate_value = manifest.get("version")
+    candidate = _parse_semver(candidate_value)
+    if candidate is None:
+        errors.append(f"plugin version `{candidate_value}` is not valid SemVer")
+        return sorted(set(errors))
+
+    baseline_ref = base_ref or "HEAD"
+    try:
+        baseline_manifest_bytes = _baseline_file(repo_root, baseline_ref, relative_manifest)
+        if baseline_manifest_bytes is None:
+            if candidate_value != "0.1.0":
+                errors.append("initial plugin release version must be exactly `0.1.0`")
+            return sorted(set(errors))
+        baseline_manifest = json.loads(baseline_manifest_bytes.decode("utf-8"))
+        baseline_value = baseline_manifest.get("version")
+        baseline = _parse_semver(baseline_value)
+        if baseline is None:
+            errors.append(f"baseline plugin version `{baseline_value}` is not valid SemVer")
+            return sorted(set(errors))
+
+        lock_relative = "plugins/vibecoding-guidance/dependency-lock.json"
+        skills_prefix = "plugins/vibecoding-guidance/skills"
+        diff = subprocess.run(
+            ["git", "diff", "--quiet", baseline_ref, "--", lock_relative, skills_prefix],
+            cwd=str(repo_root),
+            check=False,
+        )
+        if diff.returncode not in {0, 1}:
+            raise subprocess.CalledProcessError(diff.returncode, diff.args)
+        untracked = subprocess.run(
+            [
+                "git",
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+                "--",
+                lock_relative,
+                skills_prefix,
+            ],
+            cwd=str(repo_root),
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        release_content_changed = diff.returncode == 1 or bool(untracked)
+        if release_content_changed and not _semver_greater(candidate, baseline):
+            errors.append(
+                f"plugin version `{candidate_value}` must be greater than baseline `{baseline_value}` "
+                "when the dependency lock or generated skills change"
+            )
+    except (OSError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+        errors.append(f"failed to inspect Git baseline `{baseline_ref}`: {exc}")
     return sorted(set(errors))
 
 
@@ -244,6 +429,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     errors.extend(
         validate_closure(_declared_skills(lock), repo_root / "skills")
     )
+    errors.extend(validate_generated_skills(repo_root, lock))
+    errors.extend(validate_manifest_and_marketplace(repo_root))
+    errors.extend(validate_version_change(repo_root, args.base_ref))
     for error in sorted(set(errors)):
         print(error, file=sys.stderr)
     return 1 if errors else 0
