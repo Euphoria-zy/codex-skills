@@ -22,7 +22,7 @@ from check_plugin_dependencies import (
     validate_staged_skills,
     validate_version_change,
 )
-from build_plugin import build_skills, install_skills
+from build_plugin import _trees_match, build_skills, install_skills
 
 
 class PluginDependencyTests(unittest.TestCase):
@@ -278,6 +278,16 @@ class PluginBuilderTests(unittest.TestCase):
                 install_skills(staged, canonical)
 
         self.assertEqual((canonical / "old.txt").read_text(encoding="utf-8"), "old")
+
+    def test_tree_comparison_ignores_text_line_ending_differences(self) -> None:
+        left = self.root / "left"
+        right = self.root / "right"
+        left.mkdir()
+        right.mkdir()
+        (left / "notice.md").write_bytes(b"first\r\nsecond\r\n")
+        (right / "notice.md").write_bytes(b"first\nsecond\n")
+
+        self.assertTrue(_trees_match(left, right))
 
 
 class PluginValidationTests(unittest.TestCase):

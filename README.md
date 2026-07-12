@@ -7,11 +7,13 @@ Reusable Codex skills for minimal, traceable, and verifiable software delivery.
 Add this repository as a Codex plugin marketplace, then install the plugin:
 
 ```powershell
-codex plugin marketplace add Euphoria-zy/codex-skills
+codex plugin marketplace add Euphoria-zy/codex-skills --ref main
 codex plugin add vibecoding-guidance@euphoria-zy-codex-skills
 ```
 
 The plugin installs `vibecoding-guidance`, `coding-standards`, and the complete pinned Superpowers dependency set together. No separate dependency installation is required.
+
+Start a new Codex task after installation so the plugin skills are loaded.
 
 To update an existing installation:
 
@@ -39,7 +41,19 @@ Install these skills from https://github.com/Euphoria-zy/codex-skills:
 
 Codex normally detects newly installed skills automatically. Restart Codex if they do not appear.
 
-## Usage
+## Plugin usage
+
+Use the namespaced skill names in a new Codex task:
+
+```text
+$vibecoding-guidance:coding-standards Review this change and keep the solution minimal and verifiable.
+```
+
+```text
+$vibecoding-guidance:vibecoding-guidance Turn this product idea into approved, tracked, and verified software delivery.
+```
+
+If the standalone source skills are also installed locally, their shorter names remain available separately:
 
 ```text
 $coding-standards Review this change and keep the solution minimal and verifiable.

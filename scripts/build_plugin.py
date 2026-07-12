@@ -205,9 +205,21 @@ def _trees_match(left: Path, right: Path) -> bool:
     left_files = {path.relative_to(left) for path in left.rglob("*") if path.is_file()}
     right_files = {path.relative_to(right) for path in right.rglob("*") if path.is_file()}
     return left_files == right_files and all(
-        (left / relative).read_bytes() == (right / relative).read_bytes()
-        for relative in left_files
+        _files_match(left / relative, right / relative) for relative in left_files
     )
+
+
+def _files_match(left: Path, right: Path) -> bool:
+    left_bytes = left.read_bytes()
+    right_bytes = right.read_bytes()
+    if left_bytes == right_bytes:
+        return True
+    try:
+        left_text = left_bytes.decode("utf-8")
+        right_text = right_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return left_text.replace("\r\n", "\n") == right_text.replace("\r\n", "\n")
 
 
 def main(argv: Optional[List[str]] = None) -> int:
