@@ -78,6 +78,36 @@ Only `plugin.json` is stored inside `.codex-plugin/`. Skills and dependency meta
 
 The plugin name remains stable across releases. Any change to bundled skill contents or the dependency lock requires a plugin version bump.
 
+The initial canonical manifest is:
+
+```json
+{
+  "name": "vibecoding-guidance",
+  "version": "0.1.0",
+  "description": "Approved, traceable, and verified software delivery with bundled planning, TDD, debugging, and review workflows.",
+  "author": {
+    "name": "Euphoria-zy",
+    "url": "https://github.com/Euphoria-zy"
+  },
+  "homepage": "https://github.com/Euphoria-zy/codex-skills",
+  "repository": "https://github.com/Euphoria-zy/codex-skills",
+  "license": "MIT",
+  "keywords": ["vibecoding", "planning", "tdd", "debugging", "delivery"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "VibeCoding Guidance",
+    "shortDescription": "Plan, implement, and verify software through explicit delivery gates",
+    "longDescription": "Turn product intent into approved design, traceable implementation, test-driven changes, systematic debugging, and verified delivery.",
+    "developerName": "Euphoria-zy",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "defaultPrompt": [
+      "Use VibeCoding Guidance to turn this product idea into approved, tracked, and verified software delivery."
+    ]
+  }
+}
+```
+
 ## Dependency lock
 
 `plugins/vibecoding-guidance/dependency-lock.json` is the authoritative build input. It records:
@@ -101,7 +131,8 @@ Conceptual shape:
       "type": "git",
       "url": "https://github.com/obra/superpowers.git",
       "commit": "d884ae04edebef577e82ff7c4e143debd0bbec99",
-      "license": "MIT"
+      "license": "MIT",
+      "licensePath": "LICENSE"
     }
   },
   "skills": [
@@ -152,8 +183,9 @@ This closure is derived from the five direct Superpowers requirements in `vibeco
 4. Copy each declared skill directory, including its supporting files, into the plugin `skills/` directory.
 5. Rewrite explicit `superpowers:` references in generated copies to the `vibecoding-guidance:` plugin namespace.
 6. Rewrite the generated entry skill's `coding-standards` dependency to the plugin namespace where required.
-7. Generate `THIRD_PARTY_NOTICES.md` with the Superpowers source, locked commit, copyright, and full MIT license.
-8. Replace the generated skills directory atomically only after all steps succeed.
+7. Read the upstream license from the locked source's declared `licensePath` and generate `THIRD_PARTY_NOTICES.md` with the source, locked commit, copyright, and full MIT license.
+8. Build and validate a sibling staging directory on the same volume as the plugin.
+9. Perform a rollback-safe swap: rename the current generated directory to a backup, rename the staging directory into place, then delete the backup. If the second rename fails, restore the backup and fail. On Windows, locked files cause a clear failure rather than partial output.
 
 The standalone source skills remain unchanged. Namespace rewrites occur only in generated plugin copies.
 
@@ -170,7 +202,7 @@ The standalone source skills remain unchanged. Namespace rewrites occur only in 
 - plugin manifest paths resolve inside the plugin root;
 - plugin and marketplace names match;
 - the generated tree matches a fresh build from the lock;
-- a dependency or bundled-content change is accompanied by a plugin version bump relative to the previous committed manifest.
+- a dependency or bundled-content change is accompanied by a plugin version bump relative to an explicitly selected Git baseline.
 
 If a developer adds a new required Superpowers reference without updating the lock, the check fails and reports the missing skill name. The developer must update the lock, rebuild, run tests, and bump the plugin version before release.
 
@@ -179,20 +211,38 @@ If a developer adds a new required Superpowers reference without updating the lo
 - Invalid JSON, unknown schema versions, duplicate skill names, missing paths, or unsupported source types stop before modifying generated output.
 - An unavailable Git source or missing locked commit fails the build; it never falls back to `main`.
 - Namespace rewrite checks fail on unresolved required Superpowers references.
-- A failed build leaves the previously generated plugin intact.
+- A failed build before the swap leaves the previously generated plugin intact. A failed swap restores the backup or reports both the primary and restoration errors without claiming success.
 - CI failures block release but do not modify the repository.
 - No build or validation script pushes commits automatically.
 
 ## Marketplace and installation
 
-`.agents/plugins/marketplace.json` exposes the plugin from the Git subdirectory:
+After `Euphoria-zy/codex-skills` is added as a marketplace source, `.agents/plugins/marketplace.json` resolves the plugin relative to that marketplace repository root:
 
-- source type: `git-subdir`;
-- repository: `https://github.com/Euphoria-zy/codex-skills.git`;
-- path: `./plugins/vibecoding-guidance`;
-- ref: `main`;
-- installation policy: `AVAILABLE`;
-- authentication policy: `ON_INSTALL`.
+```json
+{
+  "name": "euphoria-zy-codex-skills",
+  "interface": {
+    "displayName": "Euphoria-zy Codex Skills"
+  },
+  "plugins": [
+    {
+      "name": "vibecoding-guidance",
+      "source": {
+        "source": "local",
+        "path": "./plugins/vibecoding-guidance"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
+```
+
+The marketplace source itself is added from `Euphoria-zy/codex-skills` and may be pinned or refreshed by Codex. The entry inside the marketplace must use the local relative path above; it must not repeat the Git repository as a `git-subdir` source.
 
 Users add the repository as a marketplace, refresh it when needed, and install one `vibecoding-guidance` plugin. The installed plugin already contains all locked skills and does not need another dependency installation.
 
@@ -201,14 +251,25 @@ Users add the repository as a marketplace, refresh it when needed, and install o
 1. Change a source skill or dependency lock.
 2. Run dependency tests and observe the expected failure before changing generated output.
 3. Rebuild the plugin from the lock.
-4. Run the full dependency and plugin validation suite.
-5. Increment the plugin version according to the change.
+4. Increment the plugin version according to the change.
+5. Run the full dependency and plugin validation suite against the selected Git baseline.
 6. Update README release and installation instructions when user-facing behavior changes.
 7. Commit the lock, generated plugin, version, notices, tests, and documentation together.
 8. Push the validated commit to GitHub.
 9. Verify the remote marketplace and manifest resolve to the new commit.
 
 Marketplace refresh or `codex plugin marketplace upgrade` retrieves the new repository snapshot. Automatic silent upgrades are outside this design.
+
+### Version comparison baseline
+
+The version checker receives an explicit base revision and compares that revision's manifest and generated plugin tree with the candidate tree:
+
+- Initial release: if the base revision has no plugin manifest, version `0.1.0` is accepted.
+- Pull request CI: use `github.event.pull_request.base.sha`, so a multi-commit PR is compared with its target branch state.
+- Push CI: use `github.event.before`; an all-zero creation SHA is treated as an initial release.
+- Local working-tree validation: default to `HEAD`, comparing committed state with working-tree output; callers may pass `--base-ref <revision>` explicitly.
+
+If bundled output or the dependency lock changes, the candidate manifest version must be a valid SemVer value greater than the baseline version. Marketplace metadata does not duplicate the plugin version.
 
 ## Repository guidance for future Codex sessions
 
@@ -263,4 +324,3 @@ At least one integration test builds the complete plugin from the pinned Superpo
 - Marketplace metadata resolves to the plugin directory in the GitHub repository.
 - README documents marketplace installation and upgrades.
 - All tests and validation commands pass before the plugin is pushed.
-
