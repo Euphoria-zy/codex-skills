@@ -61,15 +61,11 @@ def validate_lock(
 
     for source_name, source_value in sources.items():
         if not isinstance(source_value, dict):
-            errors.append("source `{}` must be an object".format(source_name))
+            errors.append(f"source `{source_name}` must be an object")
             continue
         source_type = source_value.get("type")
         if source_type not in {"local", "git"}:
-            errors.append(
-                "source `{}` has unsupported type `{}`".format(
-                    source_name, source_type
-                )
-            )
+            errors.append(f"source `{source_name}` has unsupported type `{source_type}`")
             continue
         if source_type == "git":
             url = source_value.get("url")
@@ -77,24 +73,16 @@ def validate_lock(
             license_name = source_value.get("license")
             license_path = source_value.get("licensePath")
             if not isinstance(url, str) or not url:
-                errors.append("source `{}` git URL is missing".format(source_name))
+                errors.append(f"source `{source_name}` git URL is missing")
             if not isinstance(commit, str) or not GIT_COMMIT_PATTERN.fullmatch(commit):
-                errors.append(
-                    "source `{}` commit must be 40 lowercase hexadecimal characters".format(
-                        source_name
-                    )
-                )
+                errors.append(f"source `{source_name}` commit must be 40 lowercase hexadecimal characters")
             if not isinstance(license_name, str) or not license_name:
-                errors.append("source `{}` license is missing".format(source_name))
+                errors.append(f"source `{source_name}` license is missing")
             if not isinstance(license_path, str) or not _is_relative_path(license_path):
-                errors.append("source `{}` licensePath is invalid".format(source_name))
+                errors.append(f"source `{source_name}` licensePath is invalid")
             elif source_name in source_roots:
                 if not (source_roots[source_name] / license_path).is_file():
-                    errors.append(
-                        "source `{}` license file `{}` is missing".format(
-                            source_name, license_path
-                        )
-                    )
+                    errors.append(f"source `{source_name}` license file `{license_path}` is missing")
 
     skills_value = lock.get("skills")
     if not isinstance(skills_value, list):
@@ -104,37 +92,35 @@ def validate_lock(
     seen: Set[str] = set()
     for index, skill_value in enumerate(skills_value):
         if not isinstance(skill_value, dict):
-            errors.append("skill entry {} must be an object".format(index))
+            errors.append(f"skill entry {index} must be an object")
             continue
         name = skill_value.get("name")
         source = skill_value.get("source")
         path_value = skill_value.get("path")
 
         if not isinstance(name, str) or not name:
-            errors.append("skill entry {} has an invalid name".format(index))
-            display_name = "#{}".format(index)
+            errors.append(f"skill entry {index} has an invalid name")
+            display_name = f"#{index}"
         else:
             display_name = name
             if name in seen:
-                errors.append("duplicate skill name `{}`".format(name))
+                errors.append(f"duplicate skill name `{name}`")
             seen.add(name)
 
         if not isinstance(source, str) or source not in sources:
-            errors.append(
-                "skill `{}` uses unknown source `{}`".format(display_name, source)
-            )
+            errors.append(f"skill `{display_name}` uses unknown source `{source}`")
             continue
         if not isinstance(path_value, str) or not _is_relative_path(path_value):
-            errors.append("skill `{}` has an invalid path".format(display_name))
+            errors.append(f"skill `{display_name}` has an invalid path")
             continue
 
         source_root = source_roots.get(source)
         if source_root is not None:
             skill_root = source_root / path_value
             if not skill_root.is_dir():
-                errors.append("skill `{}` directory is missing".format(display_name))
+                errors.append(f"skill `{display_name}` directory is missing")
             elif not (skill_root / "SKILL.md").is_file():
-                errors.append("skill `{}` is missing `SKILL.md`".format(display_name))
+                errors.append(f"skill `{display_name}` is missing `SKILL.md`")
 
     rewrites = lock.get("namespaceRewrites")
     if not isinstance(rewrites, dict) or not all(
@@ -154,12 +140,75 @@ def validate_closure(declared: Set[str], skills_root: Path) -> List[str]:
         skill_dir = skills_root / name
         for reference in sorted(scan_references(skill_dir)):
             if reference not in declared:
-                errors.append(
-                    "skill `{}` references undeclared dependency `{}`".format(
-                        name, reference
-                    )
-                )
+                errors.append(f"skill `{name}` references undeclared dependency `{reference}`")
     return errors
+
+
+def validate_staged_skills(
+    staged_skills: Path, lock: Mapping[str, object]
+) -> List[str]:
+    """Validate a fully materialized skills tree before it is installed."""
+
+    errors: List[str] = []
+    skills_value = lock.get("skills")
+    sources_value = lock.get("sources")
+    namespace = lock.get("namespace")
+    if not isinstance(skills_value, list) or not isinstance(sources_value, dict):
+        return ["cannot validate staged skills from an invalid dependency lock"]
+
+    declared = {
+        item["name"]
+        for item in skills_value
+        if isinstance(item, dict) and isinstance(item.get("name"), str)
+    }
+    actual = {
+        item.name
+        for item in staged_skills.iterdir()
+        if item.is_dir() and not item.name.startswith(".")
+    } if staged_skills.is_dir() else set()
+
+    for name in sorted(declared - actual):
+        errors.append(f"staged skill `{name}` is missing")
+    for name in sorted(actual - declared):
+        errors.append(f"staged skill `{name}` is not declared in the dependency lock")
+
+    namespaced_pattern = None
+    if isinstance(namespace, str) and namespace:
+        namespaced_pattern = re.compile(
+            re.escape(namespace) + r":([a-z0-9-]+)"
+        )
+    for name in sorted(actual & declared):
+        manifest = staged_skills / name / "SKILL.md"
+        if not manifest.is_file():
+            errors.append(f"staged skill `{name}` is missing `SKILL.md`")
+            continue
+        for skill_manifest in sorted((staged_skills / name).rglob("SKILL.md")):
+            text = skill_manifest.read_text(encoding="utf-8")
+            if "superpowers:" in text:
+                errors.append(f"staged skill `{name}` contains unresolved `superpowers:` references")
+            if namespaced_pattern is not None:
+                for reference in namespaced_pattern.findall(text):
+                    if reference not in declared:
+                        errors.append(f"staged skill `{name}` references undeclared dependency `{reference}`")
+
+    git_sources = [
+        (name, value)
+        for name, value in sources_value.items()
+        if isinstance(value, dict) and value.get("type") == "git"
+    ]
+    if git_sources:
+        notice_path = staged_skills / ".third-party" / "THIRD_PARTY_NOTICES.md"
+        if not notice_path.is_file():
+            errors.append("third-party notice is missing")
+        else:
+            notice = notice_path.read_text(encoding="utf-8")
+            for source_name, source in git_sources:
+                for field in ("url", "commit", "license"):
+                    value = source.get(field)
+                    if isinstance(value, str) and value not in notice:
+                        errors.append(f"third-party notice is missing {field} for source `{source_name}`")
+
+    return sorted(set(errors))
 
 
 def _declared_skills(lock: Mapping[str, object]) -> Set[str]:
@@ -188,7 +237,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         lock = load_lock(lock_path)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        print("failed to load dependency lock: {}".format(exc), file=sys.stderr)
+        print(f"failed to load dependency lock: {exc}", file=sys.stderr)
         return 1
 
     errors = validate_lock(lock, {"repository": repo_root})
