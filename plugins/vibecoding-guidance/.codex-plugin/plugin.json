@@ -1,0 +1,25 @@
+{
+  "name": "vibecoding-guidance",
+  "version": "0.0.0",
+  "description": "Approved, traceable, and verified software delivery with bundled planning, TDD, debugging, and review workflows.",
+  "author": {
+    "name": "Euphoria-zy",
+    "url": "https://github.com/Euphoria-zy"
+  },
+  "homepage": "https://github.com/Euphoria-zy/codex-skills",
+  "repository": "https://github.com/Euphoria-zy/codex-skills",
+  "license": "MIT",
+  "keywords": ["vibecoding", "planning", "tdd", "debugging", "delivery"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "VibeCoding Guidance",
+    "shortDescription": "Plan, implement, and verify software through explicit delivery gates",
+    "longDescription": "Turn product intent into approved design, traceable implementation, test-driven changes, systematic debugging, and verified delivery.",
+    "developerName": "Euphoria-zy",
+    "category": "Developer Tools",
+    "capabilities": ["Interactive", "Read", "Write"],
+    "defaultPrompt": [
+      "Use VibeCoding Guidance to turn this idea into approved, tracked, and verified delivery."
+    ]
+  }
+}

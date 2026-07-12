@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "namespace": "vibecoding-guidance",
+  "sources": {
+    "repository": {
+      "type": "local"
+    },
+    "superpowers": {
+      "type": "git",
+      "url": "https://github.com/obra/superpowers.git",
+      "commit": "d884ae04edebef577e82ff7c4e143debd0bbec99",
+      "license": "MIT",
+      "licensePath": "LICENSE"
+    }
+  },
+  "skills": [
+    {"name": "vibecoding-guidance", "source": "repository", "path": "skills/vibecoding-guidance"},
+    {"name": "coding-standards", "source": "repository", "path": "skills/coding-standards"},
+    {"name": "brainstorming", "source": "superpowers", "path": "skills/brainstorming"},
+    {"name": "writing-plans", "source": "superpowers", "path": "skills/writing-plans"},
+    {"name": "test-driven-development", "source": "superpowers", "path": "skills/test-driven-development"},
+    {"name": "systematic-debugging", "source": "superpowers", "path": "skills/systematic-debugging"},
+    {"name": "verification-before-completion", "source": "superpowers", "path": "skills/verification-before-completion"},
+    {"name": "using-git-worktrees", "source": "superpowers", "path": "skills/using-git-worktrees"},
+    {"name": "subagent-driven-development", "source": "superpowers", "path": "skills/subagent-driven-development"},
+    {"name": "executing-plans", "source": "superpowers", "path": "skills/executing-plans"},
+    {"name": "finishing-a-development-branch", "source": "superpowers", "path": "skills/finishing-a-development-branch"},
+    {"name": "requesting-code-review", "source": "superpowers", "path": "skills/requesting-code-review"}
+  ],
+  "namespaceRewrites": {
+    "superpowers:": "vibecoding-guidance:"
+  }
+}

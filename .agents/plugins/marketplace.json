@@ -1,0 +1,20 @@
+{
+  "name": "euphoria-zy-codex-skills",
+  "interface": {
+    "displayName": "Euphoria-zy Codex Skills"
+  },
+  "plugins": [
+    {
+      "name": "vibecoding-guidance",
+      "source": {
+        "source": "local",
+        "path": "./plugins/vibecoding-guidance"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}
