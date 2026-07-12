@@ -1,0 +1,60 @@
+name: Validate plugin
+
+on:
+  pull_request:
+    paths:
+      - ".agents/plugins/**"
+      - ".github/workflows/validate-plugin.yml"
+      - "plugins/vibecoding-guidance/**"
+      - "scripts/**"
+      - "skills/**"
+      - "tests/**"
+  push:
+    paths:
+      - ".agents/plugins/**"
+      - ".github/workflows/validate-plugin.yml"
+      - "plugins/vibecoding-guidance/**"
+      - "scripts/**"
+      - "skills/**"
+      - "tests/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Validate dependencies and release version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BASE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE_REF="$PR_BASE_SHA"
+          else
+            BASE_REF="$PUSH_BASE_SHA"
+          fi
+          python scripts/check_plugin_dependencies.py --repo-root . --base-ref "$BASE_REF"
+
+      - name: Compare with a clean pinned rebuild
+        run: python scripts/build_plugin.py --repo-root . --check
+
+      - name: Scan the change range for secrets
+        uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
