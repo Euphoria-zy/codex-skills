@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{PROJECT_NAME}} 实施进度</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fa;
+      --surface: #ffffff;
+      --text: #1d2939;
+      --muted: #667085;
+      --line: #d0d5dd;
+      --todo: #667085;
+      --doing: #175cd3;
+      --done: #067647;
+      --blocked: #b42318;
+      --cancelled: #7f56d9;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--text);
+      background: var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      line-height: 1.55;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      padding: 22px 28px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.96);
+    }
+
+    h1 { margin: 0 0 4px; font-size: 26px; }
+    .subtitle, .muted { color: var(--muted); }
+    .wrap { max-width: 1440px; margin: 0 auto; padding: 22px 28px 48px; }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .card, nav, section {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+    }
+
+    .card { padding: 12px 14px; }
+    .card strong { display: block; color: var(--muted); font-size: 12px; }
+    .card span { font-size: 18px; font-weight: 750; }
+
+    .progress-track {
+      height: 10px;
+      margin: 8px 0 20px;
+      overflow: hidden;
+      border-radius: 99px;
+      background: #e4e7ec;
+    }
+
+    .progress-bar { width: 0; height: 100%; background: var(--done); }
+
+    nav { padding: 10px 12px; margin-bottom: 16px; }
+    nav a { display: inline-block; margin: 4px 12px 4px 0; color: var(--doing); text-decoration: none; }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+    .legend span { padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 13px; }
+
+    section { margin: 16px 0; overflow: hidden; }
+    h2 { margin: 0; padding: 16px 18px 6px; font-size: 20px; }
+    .section-note { margin: 0; padding: 0 18px 14px; color: var(--muted); }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px 12px; border-top: 1px solid var(--line); vertical-align: top; text-align: left; font-size: 13px; }
+    th { background: #f9fafb; color: #344054; }
+    code { padding: 1px 4px; border-radius: 4px; background: #f2f4f7; }
+
+    .status { width: 82px; font-weight: 750; }
+    .task-id { width: 78px; font-weight: 750; }
+    .dependencies { width: 100px; }
+    .files, .evidence { color: var(--muted); }
+    tr[data-status="todo"] .status { color: var(--todo); }
+    tr[data-status="doing"] .status { color: var(--doing); }
+    tr[data-status="done"] .status { color: var(--done); }
+    tr[data-status="blocked"] .status { color: var(--blocked); }
+    tr[data-status="cancelled"] .status { color: var(--cancelled); }
+
+    footer { margin-top: 18px; color: var(--muted); font-size: 12px; }
+
+    @media (max-width: 900px) {
+      header, .wrap { padding-left: 14px; padding-right: 14px; }
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
+      tr { padding: 8px 0; border-top: 1px solid var(--line); }
+      td { width: 100% !important; border-top: 0; padding: 5px 12px; }
+      td::before { display: block; color: var(--muted); font-size: 11px; font-weight: 700; }
+      td.status::before { content: "状态"; }
+      td.task-id::before { content: "编号"; }
+      td.title::before { content: "任务"; }
+      td.dependencies::before { content: "依赖"; }
+      td.description::before { content: "范围"; }
+      td.acceptance::before { content: "验收与验证"; }
+      td.files::before { content: "主要文件"; }
+      td.evidence::before { content: "证据 / 阻塞原因"; }
+    }
+  </style>
+</head>
+<body>
+  <!--
+    使用规则：
+    1. 复制本文件到 docs/{{PROJECT_NAME}}实施进度.html 后替换所有 {{...}} 占位符。
+    2. 每一任务行对应一个可独立验收节点和一个 Git 提交；任务 ID 必须唯一且与实施计划一致。
+    3. data-status 仅允许 todo、doing、done、blocked、cancelled；状态文字与其同步。
+    4. 增删阶段时同步导航；不得删除验收、文件或证据列。
+  -->
+  <header>
+    <h1>{{PROJECT_NAME}} 实施进度</h1>
+    <div class="subtitle">批准计划：{{PLAN_APPROVED_AT}} · 最后更新：<span id="last-updated">{{LAST_UPDATED}}</span></div>
+  </header>
+
+  <main class="wrap">
+    <div class="summary" aria-label="项目摘要">
+      <div class="card"><strong>当前阶段</strong><span>{{CURRENT_PHASE}}</span></div>
+      <div class="card"><strong>总任务</strong><span id="count-total">0</span></div>
+      <div class="card"><strong>已完成</strong><span id="count-done">0</span></div>
+      <div class="card"><strong>进行中</strong><span id="count-doing">0</span></div>
+      <div class="card"><strong>阻塞</strong><span id="count-blocked">0</span></div>
+      <div class="card"><strong>进度</strong><span id="progress-text">0%</span></div>
+    </div>
+    <div class="progress-track" aria-label="完成进度"><div id="progress-bar" class="progress-bar"></div></div>
+
+    <div class="legend" aria-label="状态说明">
+      <span style="color: var(--todo)">○ 待做</span>
+      <span style="color: var(--doing)">▶ 进行中</span>
+      <span style="color: var(--done)">✓ 已完成</span>
+      <span style="color: var(--blocked)">× 阻塞</span>
+      <span style="color: var(--cancelled)">— 取消</span>
+    </div>
+
+    <nav aria-label="阶段导航">
+      <a href="#p0">P0 {{PHASE_0_NAME}}</a>
+      <!-- 为其余阶段增加链接。 -->
+    </nav>
+
+    <section id="p0">
+      <h2>P0 {{PHASE_0_NAME}}</h2>
+      <p class="section-note">{{PHASE_0_GOAL}}</p>
+      <table>
+        <thead>
+          <tr>
+            <th class="status">状态</th>
+            <th class="task-id">编号</th>
+            <th class="title">任务</th>
+            <th class="dependencies">依赖</th>
+            <th class="description">范围</th>
+            <th class="acceptance">验收与验证</th>
+            <th class="files">主要文件</th>
+            <th class="evidence">证据 / 阻塞原因</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-status="todo">
+            <td class="status">○ 待做</td>
+            <td class="task-id">P0-01</td>
+            <td class="title">{{TASK_TITLE}}</td>
+            <td class="dependencies">无</td>
+            <td class="description">{{TASK_SCOPE}}</td>
+            <td class="acceptance"><code>AC-001</code>：{{ACCEPTANCE_AND_COMMAND}}</td>
+            <td class="files">{{EXPECTED_FILES}}</td>
+            <td class="evidence">尚未执行</td>
+          </tr>
+          <!-- 复制任务行；复制整个 section 创建新阶段。 -->
+        </tbody>
+      </table>
+    </section>
+
+    <footer>
+      状态必须与验证证据一致。完成任务的代码、测试和本进度表使用同一任务 ID 原子提交；阻塞任务只提交进度、原因和证据。
+    </footer>
+  </main>
+
+  <script>
+    (() => {
+      const rows = [...document.querySelectorAll('tbody tr[data-status]')];
+      const count = status => rows.filter(row => row.dataset.status === status).length;
+      const total = rows.length;
+      const done = count('done');
+      const cancelled = count('cancelled');
+      const denominator = Math.max(total - cancelled, 0);
+      const percent = denominator === 0 ? 0 : Math.round((done / denominator) * 100);
+
+      document.getElementById('count-total').textContent = String(total);
+      document.getElementById('count-done').textContent = String(done);
+      document.getElementById('count-doing').textContent = String(count('doing'));
+      document.getElementById('count-blocked').textContent = String(count('blocked'));
+      document.getElementById('progress-text').textContent = `${percent}%`;
+      document.getElementById('progress-bar').style.width = `${percent}%`;
+    })();
+  </script>
+</body>
+</html>
