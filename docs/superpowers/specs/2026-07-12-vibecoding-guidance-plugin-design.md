@@ -50,12 +50,12 @@ codex-skills/
 │     ├─ .codex-plugin/
 │     │  └─ plugin.json
 │     ├─ dependency-lock.json
-│     └─ bundle/                   # Generated and replaced as one unit
-│        ├─ THIRD_PARTY_NOTICES.md
-│        └─ skills/
-│           ├─ vibecoding-guidance/
-│           ├─ coding-standards/
-│           └─ <vendored-superpowers-skills>/
+│     └─ skills/                  # Generated and replaced as one unit
+│        ├─ .third-party/
+│        │  └─ THIRD_PARTY_NOTICES.md
+│        ├─ vibecoding-guidance/
+│        ├─ coding-standards/
+│        └─ <vendored-superpowers-skills>/
 ├─ scripts/
 │  ├─ build_plugin.py
 │  └─ check_plugin_dependencies.py
@@ -66,7 +66,7 @@ codex-skills/
 └─ README.md
 ```
 
-Only `plugin.json` is stored inside `.codex-plugin/`. Dependency metadata remains at the plugin root. Generated skills and their third-party notice live together under `bundle/`, allowing the build to replace all generated artifacts as one rollback-safe unit.
+Only `plugin.json` is stored inside `.codex-plugin/`. Dependency metadata remains at the plugin root. Generated skills and their third-party notice live together under the standard `skills/` contract directory. The hidden `.third-party/` directory is ignored by skill discovery and lets the build replace all generated artifacts as one rollback-safe unit.
 
 ## Plugin identity
 
@@ -74,7 +74,7 @@ Only `plugin.json` is stored inside `.codex-plugin/`. Dependency metadata remain
 - Initial plugin version: `0.1.0`
 - License: MIT
 - Category: Developer Tools
-- Skills path: `./bundle/skills/`
+- Skills path: `./skills/`
 - Repository: `https://github.com/Euphoria-zy/codex-skills`
 
 The plugin name remains stable across releases. Any change to bundled skill contents or the dependency lock requires a plugin version bump.
@@ -94,7 +94,7 @@ The initial canonical manifest is:
   "repository": "https://github.com/Euphoria-zy/codex-skills",
   "license": "MIT",
   "keywords": ["vibecoding", "planning", "tdd", "debugging", "delivery"],
-  "skills": "./bundle/skills/",
+  "skills": "./skills/",
   "interface": {
     "displayName": "VibeCoding Guidance",
     "shortDescription": "Plan, implement, and verify software through explicit delivery gates",
@@ -181,12 +181,14 @@ This closure is derived from the five direct Superpowers requirements in `vibeco
 1. Read and validate `dependency-lock.json`.
 2. Resolve local skills from the repository.
 3. Fetch the external source at the exact locked commit into temporary storage.
-4. Copy each declared skill directory, including its supporting files, into a staged `bundle/skills/` directory.
+4. Copy each declared skill directory, including its supporting files, into a staged `skills/` directory.
 5. Rewrite explicit `superpowers:` references in generated copies to the `vibecoding-guidance:` plugin namespace.
 6. Rewrite every explicit `coding-standards` dependency in the generated entry skill to `vibecoding-guidance:coding-standards`.
-7. Read the upstream license from the locked source's declared `licensePath` and generate `bundle/THIRD_PARTY_NOTICES.md` with the source, locked commit, copyright, and full MIT license.
-8. Build and validate the complete staged `bundle/` directory beside the current bundle on the same volume.
-9. Perform a rollback-safe swap of `plugins/vibecoding-guidance/bundle/`: rename the current bundle to a backup, rename the staged bundle into place, then delete the backup. If the second rename fails, restore the backup and fail. On Windows, locked files cause a clear failure rather than partial output.
+7. Read the upstream license from the locked source's declared `licensePath` and generate `skills/.third-party/THIRD_PARTY_NOTICES.md` with the source, locked commit, copyright, and full MIT license.
+8. Build and validate the complete staged `skills/` directory beside the current skills directory on the same volume.
+9. Perform a rollback-safe swap of `plugins/vibecoding-guidance/skills/`: rename the current skills directory to a backup, rename the staged directory into place, then delete the backup. If the second rename fails, restore the backup and fail. On Windows, locked files cause a clear failure rather than partial output.
+
+The builder exposes a non-mutating staging mode that writes the complete generated `skills/` tree to a caller-supplied output path. The checker contains pure validation and comparison functions; the builder imports those functions, while the checker never imports or invokes the builder. CI creates a staged build, passes it to the checker for comparison, and only the explicit install mode swaps the canonical directory.
 
 The standalone source skills remain unchanged. Namespace rewrites occur only in generated plugin copies.
 
@@ -199,7 +201,7 @@ The standalone source skills remain unchanged. Namespace rewrites occur only in 
 - local supporting files remain present after copying;
 - generated namespace references do not retain unresolved `superpowers:` requirements;
 - no generated skill is present without a lock entry;
-- `bundle/THIRD_PARTY_NOTICES.md` contains the required upstream copyright and MIT text;
+- `skills/.third-party/THIRD_PARTY_NOTICES.md` contains the required upstream copyright and MIT text;
 - plugin manifest paths resolve inside the plugin root;
 - plugin and marketplace names match;
 - the generated tree matches a fresh build from the lock;
@@ -212,7 +214,7 @@ If a developer adds a new required Superpowers reference without updating the lo
 - Invalid JSON, unknown schema versions, duplicate skill names, missing paths, or unsupported source types stop before modifying generated output.
 - An unavailable Git source or missing locked commit fails the build; it never falls back to `main`.
 - Namespace rewrite checks fail on unresolved required Superpowers references.
-- A failed build before the swap leaves the previous `bundle/` intact. A failed bundle swap restores the backup or reports both the primary and restoration errors without claiming success.
+- A failed build before the swap leaves the previous `skills/` intact. A failed skills swap restores the backup or reports both the primary and restoration errors without claiming success.
 - CI failures block release but do not modify the repository.
 - No build or validation script pushes commits automatically.
 
@@ -289,9 +291,9 @@ must run the dependency checker, rebuild from the lock, bump the plugin version 
 
 1. unit tests for dependency discovery and failure cases;
 2. dependency closure validation;
-3. a clean `bundle/` rebuild comparison;
+3. a clean staged `skills/` rebuild comparison;
 4. plugin manifest and marketplace validation;
-5. a secret scan limited to the changed plugin artifacts, using Gitleaks pinned to an immutable action commit in the workflow.
+5. a Gitleaks scan of the Git change range introduced by the pull request or push, using an immutable action commit in the workflow.
 
 CI reports drift but does not create commits or releases.
 
@@ -316,7 +318,7 @@ At least one integration test builds the complete plugin from the pinned Superpo
 
 ## Acceptance criteria
 
-- `plugins/vibecoding-guidance/.codex-plugin/plugin.json` is valid and points to `./bundle/skills/`.
+- `plugins/vibecoding-guidance/.codex-plugin/plugin.json` is valid and points to `./skills/`.
 - The generated plugin contains both local skills and the complete locked Superpowers closure.
 - The plugin contains no unresolved required `superpowers:` references.
 - Superpowers copyright and MIT license are included.
