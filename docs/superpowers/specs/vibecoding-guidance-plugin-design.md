@@ -44,7 +44,7 @@ codex-skills/
 │     └─ validate-plugin.yml
 ├─ docs/
 │  └─ superpowers/specs/
-│     └─ 2026-07-12-vibecoding-guidance-plugin-design.md
+│     └─ vibecoding-guidance-plugin-design.md
 ├─ plugins/
 │  └─ vibecoding-guidance/
 │     ├─ .codex-plugin/
