@@ -2,48 +2,51 @@
 
 Reusable Codex skills for minimal, traceable, and verifiable software delivery.
 
-## One-click plugin installation
+## Installation options
 
-Add this repository as a Codex plugin marketplace, then install the plugin:
+Installing standalone skills is the simplest way to write, inspect, and use Codex skills, so it is the recommended default. The plugin does not replace the skill format; it packages `vibecoding-guidance`, `coding-standards`, and the required Superpowers skill dependencies into one installable bundle.
+
+| Method | Recommended for | Dependency behavior |
+| --- | --- | --- |
+| Standalone skills **(recommended)** | Simple installation, direct skill development, or using only the skills you need | Installs only the selected repository skills |
+| Plugin | Using the complete `vibecoding-guidance` workflow without installing every dependency separately | Installs the repository skills and pinned Superpowers dependency closure together |
+
+### Install standalone skills (recommended)
+
+The current Codex CLI does not expose a `codex skill add` subcommand. Use the built-in `$skill-installer` through Codex and include the repository address:
+
+```powershell
+codex 'Use $skill-installer to install skills/coding-standards and skills/vibecoding-guidance from https://github.com/Euphoria-zy/codex-skills'
+```
+
+To install only the self-contained `coding-standards` skill:
+
+```powershell
+codex 'Use $skill-installer to install skills/coding-standards from https://github.com/Euphoria-zy/codex-skills'
+```
+
+Standalone skills use their short names:
+
+```text
+$coding-standards Review this change and keep the solution minimal and verifiable.
+```
+
+```text
+$vibecoding-guidance Turn this product idea into approved, tracked, and verified software delivery.
+```
+
+`coding-standards` is self-contained. A standalone `vibecoding-guidance` installation does not automatically install its Superpowers dependencies. Install those dependencies separately or use the plugin for the complete workflow.
+
+### Install the plugin (dependency bundle)
+
+Add this GitHub repository as a Codex plugin marketplace, then install the bundled plugin:
 
 ```powershell
 codex plugin marketplace add Euphoria-zy/codex-skills --ref main
 codex plugin add vibecoding-guidance@euphoria-zy-codex-skills
 ```
 
-The plugin installs `vibecoding-guidance`, `coding-standards`, and the complete pinned Superpowers dependency set together. No separate dependency installation is required.
-
-Start a new Codex task after installation so the plugin skills are loaded.
-
-To update an existing installation:
-
-```powershell
-codex plugin marketplace upgrade euphoria-zy-codex-skills
-codex plugin add vibecoding-guidance@euphoria-zy-codex-skills
-```
-
-## Included source skills
-
-| Skill | Purpose |
-| --- | --- |
-| [`coding-standards`](skills/coding-standards) | Keep implementation changes minimal, direct, and verifiable. |
-| [`vibecoding-guidance`](skills/vibecoding-guidance) | Guide approved, traceable, and verified software delivery from product intent through release. |
-
-## Development-only standalone installation
-
-Standalone installation is useful only while editing the two repository source skills. It does not install the bundled dependency closure. Invoke `$skill-installer` and ask Codex:
-
-```text
-Install these skills from https://github.com/Euphoria-zy/codex-skills:
-- skills/coding-standards
-- skills/vibecoding-guidance
-```
-
-Codex normally detects newly installed skills automatically. Restart Codex if they do not appear.
-
-## Plugin usage
-
-Use the namespaced skill names in a new Codex task:
+Plugin skills use the marketplace namespace:
 
 ```text
 $vibecoding-guidance:coding-standards Review this change and keep the solution minimal and verifiable.
@@ -53,15 +56,21 @@ $vibecoding-guidance:coding-standards Review this change and keep the solution m
 $vibecoding-guidance:vibecoding-guidance Turn this product idea into approved, tracked, and verified software delivery.
 ```
 
-If the standalone source skills are also installed locally, their shorter names remain available separately:
+To update an existing plugin installation:
 
-```text
-$coding-standards Review this change and keep the solution minimal and verifiable.
+```powershell
+codex plugin marketplace upgrade euphoria-zy-codex-skills
+codex plugin add vibecoding-guidance@euphoria-zy-codex-skills
 ```
 
-```text
-$vibecoding-guidance Turn this product idea into approved, tracked, and verified software delivery.
-```
+Start a new Codex task after either installation method so the newly installed skills are loaded.
+
+## Included source skills
+
+| Skill | Purpose |
+| --- | --- |
+| [`coding-standards`](skills/coding-standards) | Keep implementation changes minimal, direct, and verifiable. |
+| [`vibecoding-guidance`](skills/vibecoding-guidance) | Guide approved, traceable, and verified software delivery from product intent through release. |
 
 ## Bundled dependencies
 
